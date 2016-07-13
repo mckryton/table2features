@@ -2,7 +2,21 @@ Attribute VB_Name = "basTable2Features"
 '------------------------------------------------------------------------
 ' Description  : exports features into feature files
 '------------------------------------------------------------------------
+
+' Copyright 2016 Matthias Carell
 '
+'   Licensed under the Apache License, Version 2.0 (the "License");
+'   you may not use this file except in compliance with the License.
+'   You may obtain a copy of the License at
+'
+'       http://www.apache.org/licenses/LICENSE-2.0
+'
+'   Unless required by applicable law or agreed to in writing, software
+'   distributed under the License is distributed on an "AS IS" BASIS,
+'   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+'   See the License for the specific language governing permissions and
+'   limitations under the License.
+
 'Declarations
 
 'Declare variables
@@ -136,7 +150,17 @@ Private Sub writeFeaturesToFiles(pcolFeatures As Collection)
             "end try"
             MacScript AppleScript
         #Else
-            basSystem.log_error "Windows is not yet supported"
+            Dim fsStream As Object
+            
+            Set fsStream = CreateObject("ADODB.Stream")
+            With fsStream
+                'stream type is text/string data
+                .Type = 2
+                .Charset = "utf-8"
+                .Open
+                .WriteText strFeatureText
+                .SaveToFile strFullFileName, 2
+            End With
         #End If
         lngFeatureId = lngFeatureId + 1
     Next
@@ -211,14 +235,28 @@ Private Function getTargetDir() As String
 
     Dim strTargetDir As Variant
     Dim AppleScript As String
+    
+    #If Mac Then
+    
+    #Else
+        Dim dlgChooseFolder As FileDialog
+    #End If
 
     On Error GoTo error_handler
     #If Mac Then
         AppleScript = "(choose folder with prompt ""choose feature folder"" default location (path to the desktop folder from user domain)) as string"
         strTargetDir = MacScript(AppleScript)
     #Else
-        strTargetDir = ""
-        basSystem.log "Windows is not yet supported"
+        Set dlgChooseFolder = Application.FileDialog(msoFileDialogFolderPicker)
+        With dlgChooseFolder
+            .Title = "Please choose a feature folder"
+            .AllowMultiSelect = False
+            '.InitialFileName = strPath
+            If .Show <> False Then
+                strTargetDir = .SelectedItems(1) & "\"
+            End If
+        End With
+        Set dlgChooseFolder = Nothing
     #End If
     basSystem.log ("target dir is set to " & strTargetDir)
     getTargetDir = strTargetDir

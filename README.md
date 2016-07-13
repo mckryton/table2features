@@ -9,7 +9,7 @@ creates BDD feature files from an Excel table
 * run the macro 'exportFeatures'
 
 ## system requirements
-The current version of this macro runs only with Excel 2011 for Mac.
+I tried the macro with Excel 2011 for Mac on Mac OS 10.11 and Excel 2007 on Windows 7.
 
 ## background
 The script was made for the case when you have to model an existing system. If the system has a lot of features it is quite exhausting to cerate every feature file manually. To save some effort you might now list all features in a table and let the script create all the file for you. 
