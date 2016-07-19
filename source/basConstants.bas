@@ -30,3 +30,8 @@ Global Const cLogCritical = 1
 'current log level - decreasing log level means decreasing amount of messages
 Global Const cCurrentLogLevel = 90
 
+'data table column types
+Global Const cColTypeDomain = "domain"
+Global Const cColTypeAggregate = "aggregate"
+Global Const cColTypeFeature = "feature"
+Global Const cColTypeScenario = "scenario"

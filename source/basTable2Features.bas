@@ -28,7 +28,7 @@ Option Explicit
 ' Parameter     :
 ' Returnvalue   :
 '-------------------------------------------------------------
-Public Sub exportFeatures()
+Public Sub run_exportFeatures()
 
     Dim colFeatures As Collection
 
@@ -41,7 +41,7 @@ error_handler:
     basSystem.log_error "basTable2Features.exportFeatures"
 End Sub
 '-------------------------------------------------------------
-' Description   : reads data from a atbel into a collection object
+' Description   : reads data from a table into a collection object
 ' Parameter     :
 ' Returnvalue   : collection object containing features as items
 '-------------------------------------------------------------
@@ -49,37 +49,57 @@ Private Function readFeatureFromTable()
 
     Dim colFeatures As New Collection
     Dim colSingleFeature As Collection
-    Dim strFeatureName As String
-    Dim strDomain As String
-    Dim strAggregate As String
-    Dim strScenario As String
     Dim colScenarios As Collection
-    
+    Dim colDataTableSetup As Collection
+    Dim colAvailableColumns As Collection
+    Dim strColumnType As Variant
     Dim rngCurrent As Range
+    Dim colCurrentDataRow As Collection
+    Dim lngFeatureId As Long
     
-    On Error GoTo error_handler
-    Set rngCurrent = Selection
+    'On Error GoTo error_handler
+    lngFeatureId = 1
+    Set colDataTableSetup = getDataTableSetup()
+    Set rngCurrent = colDataTableSetup("firstItem")
+    Set colAvailableColumns = colDataTableSetup("ColTypes")
+    Application.StatusBar = "reading table"
     While Trim(rngCurrent.Text) <> ""
-        Application.StatusBar = "reading table"
-        'read current feature
-        strDomain = Replace(rngCurrent.Text, " ", "_")
-        strAggregate = Replace(rngCurrent.Offset(, 1).Text, ":", " ")
-        strFeatureName = Replace(rngCurrent.Offset(, 2).Text, ":", " ")
-        If Trim(strFeatureName) = "" Then
-            strFeatureName = "undefined"
-        End If
-        strScenario = rngCurrent.Offset(, 3).Text
-        basSystem.log "read feature " & strAggregate & " - " & strFeatureName
+        Set colCurrentDataRow = New Collection
+        colCurrentDataRow.Add "", cColTypeDomain
+        colCurrentDataRow.Add "", cColTypeAggregate
+        colCurrentDataRow.Add "", cColTypeFeature
+        colCurrentDataRow.Add "", cColTypeScenario
+        For Each strColumnType In colAvailableColumns
+            colCurrentDataRow.Remove strColumnType
+            'read current feature
+            If strColumnType = cColTypeDomain Then
+                colCurrentDataRow.Add Trim(Replace(rngCurrent.Offset(, colDataTableSetup(strColumnType)).Text, " ", "_")), strColumnType
+            Else
+                'replace path delimiters, because this column data will be used for file name
+                #If Mac Then
+                    colCurrentDataRow.Add Trim(Replace(rngCurrent.Offset(, colDataTableSetup(strColumnType)).Text, ":", " ")), strColumnType
+                #Else
+                    colCurrentDataRow.Add Trim(Replace(rngCurrent.Offset(, colDataTableSetup(strColumnType)).Text, "\", " ")), strColumnType
+                #End If
+            End If
+            If strColumnType = cColTypeFeature And colCurrentDataRow(strColumnType) = "" Then
+                colCurrentDataRow.Remove strColumnType
+                colCurrentDataRow.Add "undefined_" & lngFeatureId, strColumnType
+            End If
+        Next
+        basSystem.log "read feature: " & colCurrentDataRow(cColTypeDomain) & " - " & colCurrentDataRow(cColTypeAggregate) & " - " & colCurrentDataRow(cColTypeFeature)
         'try to get the existing feature
         On Error GoTo create_new_feature
         'if not found create a new one
-        Set colSingleFeature = colFeatures(strDomain & "-" & strAggregate & "-" & strFeatureName)
+        Set colSingleFeature = colFeatures(colCurrentDataRow(cColTypeDomain) & "-" & colCurrentDataRow(cColTypeAggregate) & "-" & colCurrentDataRow(cColTypeFeature))
         On Error GoTo error_handler
         Set colScenarios = colSingleFeature.Item("scenarios")
-        If Trim(strScenario) <> "" Then
-            colScenarios.Add strScenario
+        If Trim(colCurrentDataRow(cColTypeScenario)) <> "" Then
+            colScenarios.Add colCurrentDataRow(cColTypeScenario)
         End If
         Set rngCurrent = rngCurrent.Offset(1)
+        lngFeatureId = lngFeatureId + 1
+        Set colCurrentDataRow = Nothing
     Wend
     Application.StatusBar = False
     Set readFeatureFromTable = colFeatures
@@ -87,11 +107,12 @@ Private Function readFeatureFromTable()
     
 create_new_feature:
     Set colSingleFeature = New Collection
-    colSingleFeature.Add strFeatureName, "name"
-    colSingleFeature.Add strDomain, "domain"
-    colSingleFeature.Add strAggregate, "aggregate"
+    colSingleFeature.Add lngFeatureId, "featureId"
+    colSingleFeature.Add colCurrentDataRow(cColTypeFeature), "name"
+    colSingleFeature.Add colCurrentDataRow(cColTypeDomain), "domain"
+    colSingleFeature.Add colCurrentDataRow(cColTypeAggregate), "aggregate"
     colSingleFeature.Add New Collection, "scenarios"
-    colFeatures.Add colSingleFeature, strDomain & "-" & strAggregate & "-" & strFeatureName
+    colFeatures.Add colSingleFeature, colCurrentDataRow(cColTypeDomain) & "-" & colCurrentDataRow(cColTypeAggregate) & "-" & colCurrentDataRow(cColTypeFeature)
     Resume Next
 error_handler:
     basSystem.log_error "basTable2Features.exportFeatures"
@@ -117,8 +138,8 @@ Private Sub writeFeaturesToFiles(pcolFeatures As Collection)
 
     On Error GoTo error_handler
     strTargetDir = basTable2Features.getTargetDir()
-    lngFeatureId = 1
     For Each colSingleFeature In pcolFeatures
+        lngFeatureId = colSingleFeature.Item("featureId")
         strFeatureName = colSingleFeature.Item("name")
         strAggregateName = colSingleFeature.Item("aggregate")
         strFileName = basTable2Features.getFileName(lngFeatureId, strAggregateName, strFeatureName)
@@ -162,7 +183,6 @@ Private Sub writeFeaturesToFiles(pcolFeatures As Collection)
                 .SaveToFile strFullFileName, 2
             End With
         #End If
-        lngFeatureId = lngFeatureId + 1
     Next
     Application.StatusBar = False
     Exit Sub
@@ -263,5 +283,117 @@ Private Function getTargetDir() As String
     Exit Function
     
 error_handler:
-    basSystem.log_error "basTable2Features.getTargetDir"
+    basSystem.log_error "basTable2Features.getTargetDir"
+End Function
+'-------------------------------------------------------------
+' Description   : detect column names and first data row or just
+'                   just assume a default order if table header is missing
+' Parameter     :
+' Returnvalue   : collection containing table setup
+'-------------------------------------------------------------
+Private Function getDataTableSetup() As Collection
+
+    Dim colTableSetup As New Collection
+    Dim colColumnTypesFound As New Collection
+    Dim rngFirstDataItem As Range
+    Dim rngDataTable As Range
+    Dim rngSelection As Range
+    Dim intColumn As Integer
+    Dim strColumnType As String
+
+    'stop script if no range selected
+    On Error GoTo stop_script
+    Set rngSelection = Selection
+    On Error GoTo error_handler
+    Set rngDataTable = rngSelection.CurrentRegion
+    For intColumn = 1 To rngDataTable.Columns.Count
+        strColumnType = getDataColumnType(rngDataTable.Cells(1, intColumn).Text)
+        colColumnTypesFound.Add strColumnType
+        If strColumnType <> "" Then
+            'save column index  - 1 because we want to use the index as an offset
+            colTableSetup.Add intColumn - 1, strColumnType
+        End If
+    Next
+    'if no header detected
+    If colTableSetup.Count = 0 Then
+        'assume table hasn't any header
+        Select Case rngDataTable.Columns.Count
+            Case 4
+                'assume columns are domain, aggregate, feature and scenario
+                colTableSetup.Add 1, cColTypeDomain
+                colTableSetup.Add 2, cColTypeAggregate
+                colTableSetup.Add 3, cColTypeFeature
+                colTableSetup.Add 4, cColTypeScenario
+                colColumnTypesFound.Add cColTypeDomain
+                colColumnTypesFound.Add cColTypeAggregate
+                colColumnTypesFound.Add cColTypeFeature
+                colColumnTypesFound.Add cColTypeScenario
+            Case 3
+                'assume columns are domain, feature and scenario
+                colTableSetup.Add 1, cColTypeDomain
+                colTableSetup.Add 2, cColTypeFeature
+                colTableSetup.Add 3, cColTypeScenario
+                colColumnTypesFound.Add cColTypeDomain
+                colColumnTypesFound.Add cColTypeFeature
+                colColumnTypesFound.Add cColTypeScenario
+            Case 2
+                'assume columns are feature and scenario
+                colTableSetup.Add 1, cColTypeFeature
+                colTableSetup.Add 2, cColTypeScenario
+                colColumnTypesFound.Add cColTypeFeature
+                colColumnTypesFound.Add cColTypeScenario
+            Case 1
+                'assume it's the feature only column
+                colTableSetup.Add 1, cColTypeFeature
+                colColumnTypesFound.Add cColTypeFeature
+            Case Else
+                MsgBox "Sorry, found " & rngDataTable.Columns.Count & " columns in your table but no header. Expect 4 to 2, don't know how to map them." & vbCrLf & _
+                    "Please use domain, aggregate, feature or scenario as table header!"
+                End
+        End Select
+        'table starts in first row
+        colTableSetup.Add rngDataTable.Cells(1, 1), "firstItem"
+    Else
+        'table starts in second row
+        colTableSetup.Add rngDataTable.Cells(2, 1), "firstItem"
+    End If
+    'feature column is mandatory for creating feature files
+    On Error GoTo missing_columns
+    intColumn = colTableSetup(cColTypeFeature)
+    colTableSetup.Add colColumnTypesFound, "ColTypes"
+    Set getDataTableSetup = colTableSetup
+    Exit Function
+
+missing_columns:
+    MsgBox "Sorry, could not find a feature column in your selected table!"
+    End
+stop_script:
+    MsgBox "Please set the cursor into the table containing your feature data!"
+    End
+error_handler:
+    basSystem.log_error "basTable2Features.getDataTableSetup"
+End Function
+'-------------------------------------------------------------
+' Description   : try to recognize the columntype from it's heading
+' Parameter     :
+' Returnvalue   : domain, aggregate, feature or scenario
+'-------------------------------------------------------------
+Private Function getDataColumnType(pstrColumnHeader As String) As String
+
+    Dim arrColumnTypes As Variant
+    Dim intColumnType As Integer
+        
+    On Error GoTo error_handler
+    arrColumnTypes = Array(cColTypeDomain, cColTypeAggregate, cColTypeFeature, cColTypeScenario)
+    For intColumnType = 0 To UBound(arrColumnTypes)
+        If Trim(LCase(pstrColumnHeader)) = arrColumnTypes(intColumnType) Or _
+                Trim(LCase(pstrColumnHeader)) & "s" = arrColumnTypes(intColumnType) Then
+            getDataColumnType = arrColumnTypes(intColumnType)
+            Exit Function
+        End If
+    Next
+    getDataColumnType = ""
+    
+error_handler:
+    basSystem.log_error "basTable2Features.getDataTableSetup"
 End Function
