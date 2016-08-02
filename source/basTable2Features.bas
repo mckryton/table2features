@@ -205,14 +205,26 @@ Private Function getFeatureTextFromCollection(pcolSingleFeature As Collection) A
     Dim strFeatureText As String
     
     On Error GoTo error_handler
+    strFeatureText = ""
     strDomain = pcolSingleFeature.Item("domain")
-    strFeatureText = "@d-" & strDomain & vbLf
+    If Trim(strDomain) <> "" Then
+        strFeatureText = "@d-" & strDomain & vbLf
+    End If
     strAggregate = pcolSingleFeature.Item("aggregate")
+    If Trim(strAggregate) <> "" Then
+        strFeatureText = strFeatureText & "Feature: " & strAggregate & " - "
+    Else
+        strFeatureText = strFeatureText & "Feature: "
+    End If
     strFeatureName = pcolSingleFeature.Item("name")
-    strFeatureText = strFeatureText & "Feature: " & strAggregate & " - " & strFeatureName & vbLf & vbLf & vbLf
+    strFeatureText = strFeatureText & strFeatureName & vbLf & vbLf & vbLf
     Set colScenarios = pcolSingleFeature.Item("scenarios")
     For Each strScenario In colScenarios
-        strFeatureText = strFeatureText & vbLf & "  Scenario: " & strScenario & vbLf & vbLf & vbLf & vbLf
+        strFeatureText = strFeatureText & vbLf & _
+                            "  Scenario: " & strScenario & vbLf & _
+                            "    GIVEN " & vbLf & _
+                            "    WHEN " & vbLf & _
+                            "    THEN " & vbLf & vbLf
     Next
     getFeatureTextFromCollection = strFeatureText
     Exit Function
@@ -233,8 +245,12 @@ Private Function getFileName(plngFeatureId, pstrAggregateName, pstrFeatureName) 
     
     On Error GoTo error_handler
     'list special chars and theire replacments like array(char, replacement, char, replacement)
-    varSpecialChars = Array("""", "", "(", "#", ")", "#", " ", "-", ":", "_")
-    strFileName = Trim(pstrAggregateName) & "---" & Trim(pstrFeatureName)
+    varSpecialChars = Array("""", "", "(", "#", ")", "#", " ", "-", ":", "_", "<", "#", ">", "#", "/", "-", "\", "-", "*", "#", "'", "")
+    If Trim(pstrAggregateName) = "" Then
+        strFileName = Trim(pstrFeatureName)
+    Else
+        strFileName = Trim(pstrAggregateName) & "---" & Trim(pstrFeatureName)
+    End If
     For intReplacement = 0 To UBound(varSpecialChars) Step 2
         strFileName = Replace(strFileName, varSpecialChars(intReplacement), varSpecialChars(intReplacement + 1))
     Next
@@ -308,10 +324,10 @@ Private Function getDataTableSetup() As Collection
     Set rngDataTable = rngSelection.CurrentRegion
     For intColumn = 1 To rngDataTable.Columns.Count
         strColumnType = getDataColumnType(rngDataTable.Cells(1, intColumn).Text)
-        colColumnTypesFound.Add strColumnType
         If strColumnType <> "" Then
             'save column index  - 1 because we want to use the index as an offset
             colTableSetup.Add intColumn - 1, strColumnType
+            colColumnTypesFound.Add strColumnType
         End If
     Next
     'if no header detected
@@ -320,31 +336,31 @@ Private Function getDataTableSetup() As Collection
         Select Case rngDataTable.Columns.Count
             Case 4
                 'assume columns are domain, aggregate, feature and scenario
-                colTableSetup.Add 1, cColTypeDomain
-                colTableSetup.Add 2, cColTypeAggregate
-                colTableSetup.Add 3, cColTypeFeature
-                colTableSetup.Add 4, cColTypeScenario
+                colTableSetup.Add 0, cColTypeDomain
+                colTableSetup.Add 1, cColTypeAggregate
+                colTableSetup.Add 2, cColTypeFeature
+                colTableSetup.Add 3, cColTypeScenario
                 colColumnTypesFound.Add cColTypeDomain
                 colColumnTypesFound.Add cColTypeAggregate
                 colColumnTypesFound.Add cColTypeFeature
                 colColumnTypesFound.Add cColTypeScenario
             Case 3
                 'assume columns are domain, feature and scenario
-                colTableSetup.Add 1, cColTypeDomain
-                colTableSetup.Add 2, cColTypeFeature
-                colTableSetup.Add 3, cColTypeScenario
+                colTableSetup.Add 0, cColTypeDomain
+                colTableSetup.Add 1, cColTypeFeature
+                colTableSetup.Add 2, cColTypeScenario
                 colColumnTypesFound.Add cColTypeDomain
                 colColumnTypesFound.Add cColTypeFeature
                 colColumnTypesFound.Add cColTypeScenario
             Case 2
                 'assume columns are feature and scenario
-                colTableSetup.Add 1, cColTypeFeature
-                colTableSetup.Add 2, cColTypeScenario
+                colTableSetup.Add 0, cColTypeFeature
+                colTableSetup.Add 1, cColTypeScenario
                 colColumnTypesFound.Add cColTypeFeature
                 colColumnTypesFound.Add cColTypeScenario
             Case 1
                 'assume it's the feature only column
-                colTableSetup.Add 1, cColTypeFeature
+                colTableSetup.Add 0, cColTypeFeature
                 colColumnTypesFound.Add cColTypeFeature
             Case Else
                 MsgBox "Sorry, found " & rngDataTable.Columns.Count & " columns in your table but no header. Expect 4 to 2, don't know how to map them." & vbCrLf & _
@@ -384,6 +400,7 @@ Private Function getDataColumnType(pstrColumnHeader As String) As String
     Dim intColumnType As Integer
         
     On Error GoTo error_handler
+    'TODO: handle column names in languages other than English
     arrColumnTypes = Array(cColTypeDomain, cColTypeAggregate, cColTypeFeature, cColTypeScenario)
     For intColumnType = 0 To UBound(arrColumnTypes)
         If Trim(LCase(pstrColumnHeader)) = arrColumnTypes(intColumnType) Or _
@@ -393,7 +410,8 @@ Private Function getDataColumnType(pstrColumnHeader As String) As String
         End If
     Next
     getDataColumnType = ""
+    Exit Function
     
 error_handler:
-    basSystem.log_error "basTable2Features.getDataTableSetup"
+    basSystem.log_error "basTable2Features.getDataColumnType"
 End Function
