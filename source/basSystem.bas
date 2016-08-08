@@ -140,7 +140,10 @@ Private Sub exportCode()
     Dim strSuffix As String
 
     On Error GoTo error_handler
-    #If Mac Then
+    #If MAC_OFFICE_VERSION >= 15 Then
+        'in Office 2016 MAC M$ switched to / as path separator
+        strSeparator = "/"
+    #ElseIf Mac Then
         strSeparator = ":"
     #Else
         strSeparator = "\"
