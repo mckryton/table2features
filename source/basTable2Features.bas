@@ -56,6 +56,7 @@ Private Function readFeatureFromTable()
     Dim rngCurrent As Range
     Dim colCurrentDataRow As Collection
     Dim lngFeatureId As Long
+    Dim colScenario As Collection
     
     'On Error GoTo error_handler
     lngFeatureId = 1
@@ -69,19 +70,25 @@ Private Function readFeatureFromTable()
         colCurrentDataRow.Add "", cColTypeAggregate
         colCurrentDataRow.Add "", cColTypeFeature
         colCurrentDataRow.Add "", cColTypeScenario
+        colCurrentDataRow.Add "", cColTypeFeature & "Tags"
+        colCurrentDataRow.Add "", cColTypeScenario & "Tags"
         For Each strColumnType In colAvailableColumns
             colCurrentDataRow.Remove strColumnType
             'read current feature
             If strColumnType = cColTypeDomain Then
+                'replace spaces in domain names
                 colCurrentDataRow.Add Trim(Replace(rngCurrent.Offset(, colDataTableSetup(strColumnType)).Text, " ", "_")), strColumnType
-            Else
+            ElseIf strColumnType = cColTypeFeature Then
                 'replace path delimiters, because this column data will be used for file name
                 #If Mac Then
                     colCurrentDataRow.Add Trim(Replace(rngCurrent.Offset(, colDataTableSetup(strColumnType)).Text, ":", " ")), strColumnType
                 #Else
                     colCurrentDataRow.Add Trim(Replace(rngCurrent.Offset(, colDataTableSetup(strColumnType)).Text, "\", " ")), strColumnType
                 #End If
+            Else
+                colCurrentDataRow.Add Trim(rngCurrent.Offset(, colDataTableSetup(strColumnType)).Text), strColumnType
             End If
+            'set default name for feature, because feature name is mandatory
             If strColumnType = cColTypeFeature And colCurrentDataRow(strColumnType) = "" Then
                 colCurrentDataRow.Remove strColumnType
                 colCurrentDataRow.Add "undefined_" & lngFeatureId, strColumnType
@@ -95,7 +102,11 @@ Private Function readFeatureFromTable()
         On Error GoTo error_handler
         Set colScenarios = colSingleFeature.Item("scenarios")
         If Trim(colCurrentDataRow(cColTypeScenario)) <> "" Then
-            colScenarios.Add colCurrentDataRow(cColTypeScenario)
+            Set colScenario = New Collection
+            colScenario.Add colCurrentDataRow(cColTypeScenario), "name"
+            colScenario.Add colCurrentDataRow(cColTypeScenario & "Tags"), "scenarioTags"
+            colScenarios.Add colScenario, colCurrentDataRow(cColTypeScenario)
+            Set colScenario = Nothing
         End If
         Set rngCurrent = rngCurrent.Offset(1)
         lngFeatureId = lngFeatureId + 1
@@ -111,11 +122,12 @@ create_new_feature:
     colSingleFeature.Add colCurrentDataRow(cColTypeFeature), "name"
     colSingleFeature.Add colCurrentDataRow(cColTypeDomain), "domain"
     colSingleFeature.Add colCurrentDataRow(cColTypeAggregate), "aggregate"
+    colSingleFeature.Add colCurrentDataRow(cColTypeFeature & "Tags"), "featureTags"
     colSingleFeature.Add New Collection, "scenarios"
     colFeatures.Add colSingleFeature, colCurrentDataRow(cColTypeDomain) & "-" & colCurrentDataRow(cColTypeAggregate) & "-" & colCurrentDataRow(cColTypeFeature)
     Resume Next
 error_handler:
-    basSystem.log_error "basTable2Features.exportFeatures"
+    basSystem.log_error "basTable2Features.readFeatureFromTable"
 End Function
 
 '-------------------------------------------------------------
@@ -201,16 +213,27 @@ Private Function getFeatureTextFromCollection(pcolSingleFeature As Collection) A
     Dim strDomain As String
     Dim strAggregate As String
     Dim colScenarios As Collection
-    Dim strScenario As Variant
+    Dim colScenario As Collection
     Dim strFeatureText As String
+    Dim varFeatureTags As Variant
+    Dim lngFeatureTag As Long
+    Dim varScenarioTags As Variant
+    Dim lngScenarioTag As Long
     
     On Error GoTo error_handler
     strFeatureText = ""
-    strDomain = pcolSingleFeature.Item("domain")
+    strDomain = pcolSingleFeature.Item(cColTypeDomain)
     If Trim(strDomain) <> "" Then
-        strFeatureText = "@d-" & strDomain & vbLf
+        strFeatureText = "@d-" & strDomain
     End If
-    strAggregate = pcolSingleFeature.Item("aggregate")
+    varFeatureTags = Split(Trim(pcolSingleFeature.Item(cColTypeFeature & "Tags")))
+    For lngFeatureTag = 0 To UBound(varFeatureTags)
+        If Trim(varFeatureTags(lngFeatureTag)) <> "" Then
+            strFeatureText = strFeatureText & " @" & Trim(varFeatureTags(lngFeatureTag))
+        End If
+    Next
+    strFeatureText = strFeatureText & vbLf
+    strAggregate = pcolSingleFeature.Item(cColTypeAggregate)
     If Trim(strAggregate) <> "" Then
         strFeatureText = strFeatureText & "Feature: " & strAggregate & " - "
     Else
@@ -219,9 +242,16 @@ Private Function getFeatureTextFromCollection(pcolSingleFeature As Collection) A
     strFeatureName = pcolSingleFeature.Item("name")
     strFeatureText = strFeatureText & strFeatureName & vbLf & vbLf & vbLf
     Set colScenarios = pcolSingleFeature.Item("scenarios")
-    For Each strScenario In colScenarios
+    For Each colScenario In colScenarios
+        strFeatureText = strFeatureText & " "
+        varScenarioTags = Split(Trim(colScenario.Item(cColTypeScenario & "Tags")))
+        For lngScenarioTag = 0 To UBound(varScenarioTags)
+            If Trim(varScenarioTags(lngScenarioTag)) <> "" Then
+                strFeatureText = strFeatureText & " @" & Trim(varScenarioTags(lngScenarioTag))
+            End If
+        Next
         strFeatureText = strFeatureText & vbLf & _
-                            "  Scenario: " & strScenario & vbLf & _
+                            "  Scenario: " & colScenario("name") & vbLf & _
                             "    GIVEN " & vbLf & _
                             "    WHEN " & vbLf & _
                             "    THEN " & vbLf & vbLf
@@ -403,10 +433,18 @@ Private Function getDataColumnType(pstrColumnHeader As String) As String
     'TODO: handle column names in languages other than English
     arrColumnTypes = Array(cColTypeDomain, cColTypeAggregate, cColTypeFeature, cColTypeScenario)
     For intColumnType = 0 To UBound(arrColumnTypes)
+        'figure out if column is about standard data (e.g. features, scenarios)
         If Trim(LCase(pstrColumnHeader)) = arrColumnTypes(intColumnType) Or _
                 Trim(LCase(pstrColumnHeader)) & "s" = arrColumnTypes(intColumnType) Then
             getDataColumnType = arrColumnTypes(intColumnType)
             Exit Function
+        'figure out if the column contains feature or scenario tags (e.g. status tags)
+        ElseIf arrColumnTypes(intColumnType) = cColTypeFeature Or arrColumnTypes(intColumnType) = cColTypeScenario Then
+            If LCase(Left(Trim(pstrColumnHeader), Len(arrColumnTypes(intColumnType)))) = arrColumnTypes(intColumnType) _
+                And (LCase(Right(Trim(pstrColumnHeader), 3)) = "tag" Or LCase(Right(Trim(pstrColumnHeader), 4)) = "tags") Then
+                getDataColumnType = LCase(Left(Trim(pstrColumnHeader), Len(arrColumnTypes(intColumnType)))) & "Tags"
+                Exit Function
+            End If
         End If
     Next
     getDataColumnType = ""
