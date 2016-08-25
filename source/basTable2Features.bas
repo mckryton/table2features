@@ -149,7 +149,7 @@ Private Sub writeFeaturesToFiles(pcolFeatures As Collection)
     Dim strFullFileName As String
 
     On Error GoTo error_handler
-    strTargetDir = basTable2Features.getTargetDir()
+    strTargetDir = basTable2Features.chooseFeatureFolder()
     For Each colSingleFeature In pcolFeatures
         lngFeatureId = colSingleFeature.Item("featureId")
         strFeatureName = colSingleFeature.Item("name")
@@ -160,7 +160,17 @@ Private Sub writeFeaturesToFiles(pcolFeatures As Collection)
         basSystem.logd vbCr & vbLf & strFeatureText
         strFullFileName = strTargetDir & strFileName
         Application.StatusBar = "writing file " & strFileName & " to folder " & strTargetDir
-        #If Mac Then
+        #If MAC_OFFICE_VERSION >= 15 Then
+        
+            Dim varScriptResult As Variant
+        
+            varScriptResult = AppleScriptTask("table2features.scpt", "writeFeatureToFile", strFullFileName & vbLf & strFeatureText)
+            
+            If LCase(CStr(varScriptResult)) = "cancel" Then
+                en
+            End If
+
+        #ElseIf Mac Then
             AppleScript = "set theFeatureFile to a reference to file """ & strFullFileName & """" & vbLf & _
             "try" & vbLf & _
                 "set fileRef to (open for access theFeatureFile with write permission)" & vbLf & _
@@ -297,35 +307,39 @@ End Function
 ' Parameter     :
 ' Returnvalue   : target dir as string
 '-------------------------------------------------------------
-Private Function getTargetDir() As String
+Private Function chooseFeatureFolder() As String
 
-    Dim strTargetDir As Variant
-    Dim AppleScript As String
+    Dim strFeatureFolder As Variant
     
-    #If Mac Then
-    
+    On Error GoTo error_handler
+    #If MAC_OFFICE_VERSION >= 15 Then
+       
+        Dim varScriptResult As Variant
+        
+        varScriptResult = AppleScriptTask("table2features.scpt", "chooseFeatureFolder", "")
+        strFeatureFolder = CStr(varScriptResult)
+
+    #ElseIf Mac Then
+        Dim AppleScript As String
+
+        AppleScript = "(choose folder with prompt ""choose feature folder"" default location (path to the desktop folder from user domain)) as string"
+        strFeatureFolder = MacScript(AppleScript)
     #Else
         Dim dlgChooseFolder As FileDialog
-    #End If
 
-    On Error GoTo error_handler
-    #If Mac Then
-        AppleScript = "(choose folder with prompt ""choose feature folder"" default location (path to the desktop folder from user domain)) as string"
-        strTargetDir = MacScript(AppleScript)
-    #Else
         Set dlgChooseFolder = Application.FileDialog(msoFileDialogFolderPicker)
         With dlgChooseFolder
             .Title = "Please choose a feature folder"
             .AllowMultiSelect = False
             '.InitialFileName = strPath
             If .Show <> False Then
-                strTargetDir = .SelectedItems(1) & "\"
+                strFeatureFolder = .SelectedItems(1) & "\"
             End If
         End With
         Set dlgChooseFolder = Nothing
     #End If
-    basSystem.log ("target dir is set to " & strTargetDir)
-    getTargetDir = strTargetDir
+    basSystem.log ("target dir is set to " & strFeatureFolder)
+    chooseFeatureFolder = strFeatureFolder
     Exit Function
     
 error_handler:
