@@ -109,7 +109,6 @@ Private Function readFeatureFromTable()
             Set colScenario = Nothing
         End If
         Set rngCurrent = rngCurrent.Offset(1)
-        lngFeatureId = lngFeatureId + 1
         Set colCurrentDataRow = Nothing
     Wend
     Application.StatusBar = False
@@ -125,6 +124,7 @@ create_new_feature:
     colSingleFeature.Add colCurrentDataRow(cColTypeFeature & "Tags"), "featureTags"
     colSingleFeature.Add New Collection, "scenarios"
     colFeatures.Add colSingleFeature, colCurrentDataRow(cColTypeDomain) & "-" & colCurrentDataRow(cColTypeAggregate) & "-" & colCurrentDataRow(cColTypeFeature)
+    lngFeatureId = lngFeatureId + 1
     Resume Next
 error_handler:
     basSystem.log_error "basTable2Features.readFeatureFromTable"
