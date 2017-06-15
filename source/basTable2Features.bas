@@ -262,9 +262,9 @@ Private Function getFeatureTextFromCollection(pcolSingleFeature As Collection) A
         Next
         strFeatureText = strFeatureText & vbLf & _
                             "  Scenario: " & colScenario("name") & vbLf & _
-                            "    GIVEN " & vbLf & _
-                            "    WHEN " & vbLf & _
-                            "    THEN " & vbLf & vbLf
+                            "    Given " & vbLf & _
+                            "    When " & vbLf & _
+                            "    Then " & vbLf & vbLf
     Next
     getFeatureTextFromCollection = strFeatureText
     Exit Function
